@@ -31,6 +31,10 @@ class PostmatesCoveredArea extends CoveredArea{
         $user_position = $this->location->getSession('position');
         if($user_position){
             $delivery_cost_estimate = $this->curl_postmates_delivery_quote($user_position, $cartTotal);
+
+            // amount condition value is added as a surcharge
+            $delivery_cost_estimate += $this->getConditionValue('amount', $cartTotal);
+
             return $delivery_cost_estimate;
         }
         return null;
