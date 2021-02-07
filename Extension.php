@@ -89,12 +89,12 @@ class Extension extends BaseExtension
 
             if ($form->model instanceof Orders_model) {
 
-                Event::listen('admin.toolbar.extendButtons', function (Toolbar $toolbar) {
+                Event::listen('admin.toolbar.extendButtons', function (Toolbar $toolbar) use ($form) {
                     $toolbar->buttons['call_postmates']  = [
                         'label' => 'lang:cupnoodles.postmates::default.call_postmates',
                         'class' => 'btn btn-primary',
                         'data-request' => 'onCallPostmates',
-                        'data-request-data' => "_method:'POST', order_id:93, refresh:1",
+                        'data-request-data' => "_method:'POST', order_id:" . $form->model->order_id . ", refresh:1",
                         'data-request-confirm' => 'lang:cupnoodles.postmates::default.call_postmates_confirmation',
                     ];
                     
