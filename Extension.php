@@ -3,30 +3,28 @@
 namespace CupNoodles\Postmates;
 
 use System\Classes\BaseExtension;
-use Admin\Widgets\Form;
+use System\Traits\SendsMailTemplate;
 
+use Event;
+use ApplicationException;
+
+use Admin\Controllers\Orders;
+use Admin\Widgets\Form;
+use Admin\Widgets\Toolbar;
 use Admin\Models\Location_areas_model;
 use Admin\Models\Orders_model;
 
-use Admin\Controllers\Orders;
-
-use Admin\Widgets\Toolbar;
-use CupNoodles\Postmates\Models\PostmatesSettings;
-use CupNoodles\Postmates\Classes\PostmatesCoveredArea;
-
-use Event;
-
-use Lang;
-use ApplicationException;
-
-use Igniter\Cart\Classes\OrderManager;
-
-//use Igniter\Local\Classes\Location;
 
 use Igniter\Local\Facades\Location;
 
+use CupNoodles\Postmates\Models\PostmatesSettings;
+use CupNoodles\Postmates\Classes\PostmatesCoveredArea;
+
 class Extension extends BaseExtension
 {
+    use SendsMailTemplate;
+
+    public $order_model;
     /**
      * Returns information about this extension.
      *
@@ -37,7 +35,7 @@ class Extension extends BaseExtension
         return [
             'name'        => 'Postmates',
             'author'      => 'CupNoodles',
-            'description' => 'Front end quotes for delivery through Postmates.',
+            'description' => 'Postmates API integration.',
             'icon'        => 'fa fa-shipping-fast',
             'version'     => '1.0.0'
         ];
@@ -61,14 +59,14 @@ class Extension extends BaseExtension
     public function boot()
     {
         
+        // object replacement 
         $location = Location::instance();
         $this->updatePostmatesDeliveryCost($location);
 
         Event::listen('location.area.updated', function($location,$coveredArea){
             $this->updatePostmatesDeliveryCost($location);
         });
-
-
+        
         
         // Put a 'postmates' button for type on delivery areas
         Event::listen('admin.form.extendFields', function (Form $form, $fields) {
@@ -83,25 +81,9 @@ class Extension extends BaseExtension
                     ],
                 ];
             }
-
-            if ($form->model instanceof Orders_model) {
-                //echo $form->getHandler();
-//                echo 'hi';die();
-            }
         });
 
-
-           
-        Orders::extend(function($controller){
-            $controller->addDynamicMethod('edit_onCallPostmates', function($action, $order_id) use ($controller) {
-                $model = $controller->formFindModelObject($order_id);
-                
-                $this->callPostmatesDelivery($model);
-
-            });
-        } );
-
-        
+    
         // create an order page button that calls the actual Postmates Delivery when it's ready (or about to be)
         Event::listen('admin.form.extendFieldsBefore', function (Form $form) {
 
@@ -112,17 +94,36 @@ class Extension extends BaseExtension
                         'label' => 'lang:cupnoodles.postmates::default.call_postmates',
                         'class' => 'btn btn-primary',
                         'data-request' => 'onCallPostmates',
-                        'data-request-data' => "_method:'POST', order_id:93",
-                        'data-request-confirm' => 'hi',
+                        'data-request-data' => "_method:'POST', order_id:93, refresh:1",
+                        'data-request-confirm' => 'lang:cupnoodles.postmates::default.call_postmates_confirmation',
                     ];
                     
                 });						
             }
         });
 
+        Orders::extend(function($controller){
+            $controller->addDynamicMethod('edit_onCallPostmates', function($action, $order_id) use ($controller) {
+                $model = $controller->formFindModelObject($order_id);
+                $this->callPostmatesDelivery($model);
 
+                if ($redirect = $controller->makeRedirect('edit', $model)) {
+                    return $redirect;
+                }
+
+            });
+        } );
 
     }
+
+    public function registerMailTemplates()
+    {
+        return [
+            'cupnoodles.postmates::mail.delivery_requested' => 'Order confirmation email to customer'
+        ];
+    }
+
+
 
     public function callPostmatesDelivery($order_model){
 
@@ -134,7 +135,7 @@ class Extension extends BaseExtension
         $location_address = $order_model->location->getModel()->getAddress();
         $location_address = $location_address['address_1'] . ', ' . $location_address['city'] . ', ' . $location_address['state'] . ', ' . $location_address['postcode'];
 
-       $post_data = [
+        $post_data = [
         'dropoff_address' => $deliver_to,
         'dropoff_name' => $order_model->first_name . ' ' . $order_model->last_name,
         'dropoff_phone_number'=> $order_model->telephone,
@@ -147,7 +148,7 @@ class Extension extends BaseExtension
         'pickup_address' => $location_address,
         'pickup_name' => $order_model->location->getModel()->location_name,
         'pickup_phone_number' => $order_model->location->getModel()->location_telephone
-        //'quote_id' => '' //not implemented yet
+        //'quote_id' => '' //not yet implemented
         ];
 
         // get postmates sandbox/production settings
@@ -174,19 +175,57 @@ class Extension extends BaseExtension
         $result = json_decode($result_json, true);
         
         if($result['kind'] == 'error'){
+            throw new ApplicationException($result['message'] ); // could do with some better error handling here, there's potentially a $params array in response that could be helpful to users.
+        }
+        else{
+            $this->tracking_url = $result['tracking_url'];
+            $this->order_model = $order_model;
+            // add the tracking link into the order status
 
-            throw new ApplicationException($result['message'] );
+            $order_model->updateOrderStatus(null, ['comment' => 'Postmates Delivery requested from admin. Tracking url: <a target="_blank" href="' . $result['tracking_url'] . '" >'.$result['tracking_url'].'</a>']);
+
+            // send an email if the setting's on
+            if( PostmatesSettings::get('send_email_auto') ){
+                $this->mailSend('cupnoodles.postmates::mail.delivery_requested', 'customer');
+                $this->mailSend('cupnoodles.postmates::mail.delivery_requested', 'location');
+            }
         }
 
-        die();
     }
+
+    public function mailGetRecipients($type)
+    {
+        $recipients = [];
+        switch ($type) {
+            case 'customer':
+                $recipients[] = [$this->order_model->email,  $this->order_model->first_name . ' ' . $this->order_model->last_name];
+                break;
+            case 'location':
+                $recipients[] = [$this->order_model->location->location_email, $this->order_model->location->location_name];
+                break;
+            case 'admin':
+                $recipients[] = [setting('site_email'), setting('site_name')];
+                break;
+        }
+
+        return $recipients;
+    }
+
+    public function mailGetData()
+    {
+        return [
+            'tracking_url' => $this->tracking_url,
+            'first_name' => $this->order_model->first_name,
+            'last_name' => $this->order_model->last_name,
+            'requested_time' => date('H:i')
+        ];
+    }
+
 
     public function updatePostmatesDeliveryCost($location){
         
-        // if $location->coveredArea is of the base type but has type == postmates, replace it with the new PostmatesCoveredAreaClass
-        
+        // if $location->coveredArea is of the base type but has delivery_service == postmates, replace it with the new PostmatesCoveredAreaClass
         if(is_array($location->coveredArea()->conditions) && isset($location->coveredArea()->conditions[0])){
-            
             if($location->coveredArea()->conditions[0]['delivery_service'] == 'postmates' &&
             get_class($location->coveredArea()) == 'Igniter\Local\Classes\CoveredArea'){
                 

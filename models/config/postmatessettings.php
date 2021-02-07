@@ -32,6 +32,12 @@ return [
                 'on' => 'lang:cupnoodles.postmates::default.label_production',
                 'off' => 'lang:cupnoodles.postmates::default.label_sandbox',
             ],
+            'send_email_auto' => [
+                'label' => 'lang:cupnoodles.postmates::default.send_email_auto',
+                'type' => 'switch',
+                'span' => 'left',
+                'default' => FALSE
+            ],
             'customer_id' => [
                 'label' => 'lang:cupnoodles.postmates::default.customer_id',
                 'type' => 'text',
