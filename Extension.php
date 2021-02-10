@@ -61,17 +61,15 @@ class Extension extends BaseExtension
         
         // object replacement 
         $location = Location::instance();
+        $location->locationSlugResolver(function () {});
         $this->updatePostmatesDeliveryCost($location);
+        $location->locationSlugResolver(function () {return controller()->param('location');});
 
-        Event::listen('location.area.updated', function($location,$coveredArea){
-            $this->updatePostmatesDeliveryCost($location);
-        });
-        
-        
         // Put a 'postmates' button for type on delivery areas
         Event::listen('admin.form.extendFields', function (Form $form, $fields) {
             if ($form->model instanceof Location_areas_model) {
-                $fields['conditions']->config['form']['fields']['delivery_service'] = [
+                //The following line can trigger E_WARNING if ->config hasn't been initialized yet.
+                @$fields['conditions']->config['form']['fields']['delivery_service'] = [
                     'label' => 'lang:cupnoodles.postmates::default.delivery_service',
                     'type' => 'radiotoggle',
                     'default' => 'self_delivery',
@@ -224,6 +222,7 @@ class Extension extends BaseExtension
 
     public function updatePostmatesDeliveryCost($location){
         
+
         // if $location->coveredArea is of the base type but has delivery_service == postmates, replace it with the new PostmatesCoveredAreaClass
         if(is_array($location->coveredArea()->conditions) && isset($location->coveredArea()->conditions[0])){
             if($location->coveredArea()->conditions[0]['delivery_service'] == 'postmates' &&
@@ -245,6 +244,7 @@ class Extension extends BaseExtension
             }
         }
         //echo get_class($location->coveredArea()); die();
+
     }
 
     public function registerSettings()
