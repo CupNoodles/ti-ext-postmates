@@ -61,6 +61,10 @@ class Extension extends BaseExtension
         
         // object replacement 
         $location = Location::instance();
+
+        // in 3.0.4-beta.27's tastyigniter-orange theme, if the location slug resolver is set then theme.php calls app('currency')->getDefault() before Currency's been set (i think)
+        // unsetting just locationSlugResolver and then setting it back to what the constructor would have set it to allows us to sneak in and change the classtype of CoveredArea
+        // this certainly doesn't feel good so any advice or feedback about a better way to do this would be appreciated. 
         $location->locationSlugResolver(function () {});
         $this->updatePostmatesDeliveryCost($location);
         $location->locationSlugResolver(function () {return controller()->param('location');});
