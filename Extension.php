@@ -5,6 +5,7 @@ namespace CupNoodles\Postmates;
 use System\Classes\BaseExtension;
 use System\Traits\SendsMailTemplate;
 
+use App;
 use Event;
 use ApplicationException;
 
@@ -14,7 +15,7 @@ use Admin\Widgets\Toolbar;
 use Admin\Models\Location_areas_model;
 use Admin\Models\Orders_model;
 
-
+use System\Classes\BaseController;
 use Igniter\Local\Facades\Location;
 
 use CupNoodles\Postmates\Models\PostmatesSettings;
@@ -58,12 +59,35 @@ class Extension extends BaseExtension
      */
     public function boot()
     {
-        
+
         // object replacement 
-        $location = Location::instance();
-        $location->locationSlugResolver(function () {});
-        $this->updatePostmatesDeliveryCost($location);
-        $location->locationSlugResolver(function () {return controller()->param('location');});
+        BaseController::extend( function($controller) {
+            $controller->bindEvent('controller.afterConstructor', function($controller){
+
+                $location = App::make('location');
+                $location->locationSlugResolver(function(){});
+                if(is_array($location->coveredArea()->conditions) && isset($location->coveredArea()->conditions[0])){
+                    if($location->coveredArea()->conditions[0]['delivery_service'] == 'postmates' &&
+                    get_class($location->coveredArea()) == 'Igniter\Local\Classes\CoveredArea'){
+                        if ($areaId = (int)$location->getSession('area')){
+                            $area = $location->getModel()->findDeliveryArea($areaId);
+                        }
+                        if (is_null($area)) {
+                            $area = $location->getModel()->searchOrDefaultDeliveryArea(
+                                $location->userPosition()->getCoordinates()
+                            );
+                        }
+                        $ca = new PostmatesCoveredArea($area, $location);
+                        $location->setCoveredArea($ca);
+                    }
+                }
+                $location->locationSlugResolver(function () {return controller()->param('location');});
+            });
+        });
+
+        Event::listen('location.area.updated', function($location,$coveredArea){
+            $this->updatePostmatesDeliveryCost($location);
+        });
 
         // Put a 'postmates' button for type on delivery areas
         Event::listen('admin.form.extendFields', function (Form $form, $fields) {
@@ -222,7 +246,6 @@ class Extension extends BaseExtension
 
     public function updatePostmatesDeliveryCost($location){
         
-
         // if $location->coveredArea is of the base type but has delivery_service == postmates, replace it with the new PostmatesCoveredAreaClass
         if(is_array($location->coveredArea()->conditions) && isset($location->coveredArea()->conditions[0])){
             if($location->coveredArea()->conditions[0]['delivery_service'] == 'postmates' &&
