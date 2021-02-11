@@ -37,7 +37,7 @@ class PostmatesCoveredArea extends CoveredArea{
 
             return $delivery_cost_estimate;
         }
-        return null;
+        return 0;
         
     }
 
