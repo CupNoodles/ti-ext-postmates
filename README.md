@@ -29,6 +29,14 @@ igniter.local::default.text_condition_below_total
 igniter.local::default.text_delivery
 ```
 
+Additionally, the postmates API is called with a full address from the localBox component. Since the API will fail unless it has a full address, you'll need to update 
+
+```
+igniter.local::default.label_search_query
+```
+
+to specifically state that a full address needs to be entered (not just a postcode).
+
 Since a phone number is required to make Postmates deliveries, you must make telephone a required field for any delivery order. 
 
 

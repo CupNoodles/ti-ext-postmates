@@ -8,18 +8,22 @@ use System\Traits\SendsMailTemplate;
 use App;
 use Event;
 use ApplicationException;
+use Geocoder;
 
 use Admin\Controllers\Orders;
 use Admin\Widgets\Form;
 use Admin\Widgets\Toolbar;
 use Admin\Models\Location_areas_model;
-use Admin\Models\Orders_model;
 
 use System\Classes\BaseController;
 use Igniter\Local\Facades\Location;
 
 use CupNoodles\Postmates\Models\PostmatesSettings;
 use CupNoodles\Postmates\Classes\PostmatesCoveredArea;
+
+use CupNoodles\PriceByWeight\Components\CheckoutByWeight;
+
+use Igniter\Cart\Models\Orders_Model;
 
 class Extension extends BaseExtension
 {
@@ -68,7 +72,14 @@ class Extension extends BaseExtension
             // unsetting just locationSlugResolver and then setting it back to what the constructor would have set it to allows us to sneak in and change the classtype of CoveredArea
             // this certainly doesn't feel good so any advice or feedback about a better way to do this would be appreciated. 
 
+            //$om = OrderManager::instance();
+
+
+
                 $location = App::make('location');
+
+
+
                 $location->locationSlugResolver(function(){});
                 if(is_array($location->coveredArea()->conditions) && isset($location->coveredArea()->conditions[0])){
                     if($location->coveredArea()->conditions[0]['delivery_service'] == 'postmates' &&
@@ -91,6 +102,7 @@ class Extension extends BaseExtension
 
         Event::listen('location.area.updated', function($location,$coveredArea){
             $this->updatePostmatesDeliveryCost($location);
+            $this->saveUserAddressToSession($location);
         });
 
         // Put a 'postmates' button for type on delivery areas
@@ -140,6 +152,45 @@ class Extension extends BaseExtension
             });
         } );
 
+
+        // Since the final delivery address can be entered in on the checkout screen, it may not match what was shown to the customer after entering a (possibly different) address into the localBox component. 
+        // This final check creates a location object out of the order delivery data, and check that the last postmates delivery price set in session is equal to the quote as returned byu the checkout address.
+        Event::listen('igniter.checkout.beforeSaveOrder', function(Orders_Model $order, $data){
+
+            if($order->order_type == 'delivery'){
+                $collection = Geocoder::geocode($data['address']['address_1'] . ' ' . $data['address']['address_2'] . ' ' .$data['address']['city'] . ' ' .$data['address']['state'] . ' ' .$data['address']['postcode']);
+
+                if (!$collection OR $collection->isEmpty()) {
+                    Log::error(implode(PHP_EOL, Geocoder::getLogs()));
+                    throw new ApplicationException(lang('igniter.local::default.alert_invalid_search_query'));
+                }
+
+                $userLocation = $collection->first();
+                if (!$userLocation->hasCoordinates())
+                    throw new ApplicationException(lang('igniter.local::default.alert_invalid_search_query'));
+
+                $location = App::make('location');
+                $postmates_quote_amt = session('postmates_delivery_quote');
+                $location->updateUserPosition($userLocation);
+                $this->updatePostmatesDeliveryCost($location);
+                $final_delivery_check = $location->deliveryAmount($order->order_total);
+                if(number_format($final_delivery_check, 2) != number_format($postmates_quote_amt, 2) ){
+                    throw new ApplicationException('Postmates Delivery Quote has changed. Please confirm the new delivery estimate.');
+                }
+            }
+            
+        });
+
+    }
+
+    public function saveUserAddressToSession($location){
+        session(['postmates_address_1' => $location->userPosition()->getStreetNumber() . " " . $location->userPosition()->getStreetName()]);
+        if(isset($location->userPosition()->data['subpremise'])){
+            session(['postmates_address_2' => $location->userPosition()->data['subpremise']]);
+        }
+        session(['postmates_city' => $location->userPosition()->getLocality()]);
+        session(['postmates_state' => $location->userPosition()->getAdminLevels()->last()->getCode()]);
+        session(['postmates_postcode' => $location->userPosition()->getPostalCode()]);
     }
 
     public function registerMailTemplates()

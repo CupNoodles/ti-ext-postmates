@@ -27,22 +27,27 @@ class PostmatesCoveredArea extends CoveredArea{
 
     public function deliveryAmount($cartTotal)
     {
-
+        
+        $delivery_cost_estimate = 0;
         $user_position = $this->location->getSession('position');
         if($user_position){
             $delivery_cost_estimate = $this->curl_postmates_delivery_quote($user_position, $cartTotal);
+            
+            if($delivery_cost_estimate >= 0 ){
+                // amount condition value is added as a surcharge
+                $delivery_cost_estimate += $this->getConditionValue('amount', $cartTotal);
+                session(['postmates_delivery_quote' => $delivery_cost_estimate]);
 
-            // amount condition value is added as a surcharge
-            $delivery_cost_estimate += $this->getConditionValue('amount', $cartTotal);
-
-            return $delivery_cost_estimate;
+                return $delivery_cost_estimate;
+            }
         }
-        return 0;
+        
+        return -1;
         
     }
 
     public function curl_postmates_delivery_quote($user_position, $cartTotal){
-
+        
         // get customer address string
         $user_position->format();
         // Postmates specifically requests comma-separated address formatting, so remove any potential commas in existing address fields
@@ -88,11 +93,13 @@ class PostmatesCoveredArea extends CoveredArea{
         $result_json = curl_exec($ch);
         $result = json_decode($result_json, true);
         
+
         if(isset($result['fee'])){
             return $result['fee'] / 100;
         }
         else{
-            return $this->getConditionValue('amount', $cartTotal);
+            // 
+            return -1;
         }
     }
 
