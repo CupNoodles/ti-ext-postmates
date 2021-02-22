@@ -192,7 +192,7 @@ class Extension extends BaseExtension
             session(['postmates_address_2' => $location->userPosition()->data['subpremise']]);
         }
         session(['postmates_city' => $location->userPosition()->getLocality()]);
-        if( $location->userPosition()->getAdminLevels() !== null ) {
+        if( $location->userPosition()->getAdminLevels() !== null && $location->userPosition()->getAdminLevels()->last() !== null ) {
             session(['postmates_state' => $location->userPosition()->getAdminLevels()->last()->getCode()]);
         }
 
