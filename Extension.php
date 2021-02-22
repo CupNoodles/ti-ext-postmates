@@ -25,6 +25,8 @@ use CupNoodles\PriceByWeight\Components\CheckoutByWeight;
 
 use Igniter\Cart\Models\Orders_Model;
 
+use Admin\Models\Orders_model as Admin_Orders_Model;
+
 class Extension extends BaseExtension
 {
     use SendsMailTemplate;
@@ -125,18 +127,19 @@ class Extension extends BaseExtension
         // create an order page button that calls the actual Postmates Delivery when it's ready (or about to be)
         Event::listen('admin.form.extendFieldsBefore', function (Form $form) {
 
-            if ($form->model instanceof Orders_model) {
-
-                Event::listen('admin.toolbar.extendButtons', function (Toolbar $toolbar) use ($form) {
-                    $toolbar->buttons['call_postmates']  = [
-                        'label' => 'lang:cupnoodles.postmates::default.call_postmates',
-                        'class' => 'btn btn-primary',
-                        'data-request' => 'onCallPostmates',
-                        'data-request-data' => "_method:'POST', order_id:" . $form->model->order_id . ", refresh:1",
-                        'data-request-confirm' => 'lang:cupnoodles.postmates::default.call_postmates_confirmation',
-                    ];
-                    
-                });						
+            if ($form->model instanceof Admin_Orders_Model) {
+                if ($form->model->order_type == 'delivery'){
+                    Event::listen('admin.toolbar.extendButtons', function (Toolbar $toolbar) use ($form) {
+                        $toolbar->buttons['call_postmates']  = [
+                            'label' => 'lang:cupnoodles.postmates::default.call_postmates',
+                            'class' => 'btn btn-primary',
+                            'data-request' => 'onCallPostmates',
+                            'data-request-data' => "_method:'POST', order_id:" . $form->model->order_id . ", refresh:1",
+                            'data-request-confirm' => 'lang:cupnoodles.postmates::default.call_postmates_confirmation',
+                        ];
+                        
+                    });						
+                }
             }
         });
 
@@ -189,7 +192,10 @@ class Extension extends BaseExtension
             session(['postmates_address_2' => $location->userPosition()->data['subpremise']]);
         }
         session(['postmates_city' => $location->userPosition()->getLocality()]);
-        session(['postmates_state' => $location->userPosition()->getAdminLevels()->last()->getCode()]);
+        if( $location->userPosition()->getAdminLevels() !== null ) {
+            session(['postmates_state' => $location->userPosition()->getAdminLevels()->last()->getCode()]);
+        }
+
         session(['postmates_postcode' => $location->userPosition()->getPostalCode()]);
     }
 
