@@ -18,6 +18,7 @@ class PostmatesCoveredArea extends CoveredArea{
 
     protected $model;
     protected $location;
+    protected $oldPosition;
     
     public function __construct(AreaInterface $model, $location)
     {
@@ -30,7 +31,9 @@ class PostmatesCoveredArea extends CoveredArea{
         
         $delivery_cost_estimate = 0;
         $user_position = $this->location->getSession('position');
-        if($user_position){
+
+        if($user_position && ( !isset($this->oldPosition) || $user_position != $this->oldPosition  )){
+            $this->oldPosition = $user_position;
             $delivery_cost_estimate = $this->curl_postmates_delivery_quote($user_position, $cartTotal);
             
             if($delivery_cost_estimate >= 0 ){
@@ -40,6 +43,10 @@ class PostmatesCoveredArea extends CoveredArea{
 
                 return $delivery_cost_estimate;
             }
+        }
+        elseif($user_position){
+            return session('postmates_delivery_quote');
+
         }
         
         return -1;
