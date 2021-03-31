@@ -16,7 +16,7 @@ use Admin\Widgets\Toolbar;
 use Admin\Models\Location_areas_model;
 
 use System\Classes\BaseController;
-use Igniter\Local\Facades\Location;
+use Igniter\Local\Classes\Location;
 
 use CupNoodles\Postmates\Models\PostmatesSettings;
 use CupNoodles\Postmates\Classes\PostmatesCoveredArea;
@@ -55,7 +55,7 @@ class Extension extends BaseExtension
      */
     public function register()
     {
-
+        $this->app->singleton('location', Location::class);
     }
 
     /**
@@ -67,39 +67,8 @@ class Extension extends BaseExtension
     {
 
         // object replacement 
-        BaseController::extend( function($controller) {
-            $controller->bindEvent('controller.afterConstructor', function($controller){
-
-            // in 3.0.4-beta.27's tastyigniter-orange theme, if the location slug resolver is set then theme.php calls app('currency')->getDefault() before Currency's been set (i think)
-            // unsetting just locationSlugResolver and then setting it back to what the constructor would have set it to allows us to sneak in and change the classtype of CoveredArea
-            // this certainly doesn't feel good so any advice or feedback about a better way to do this would be appreciated. 
-
-            //$om = OrderManager::instance();
-
-
-
-                $location = App::make('location');
-
-
-
-                $location->locationSlugResolver(function(){});
-                if(is_array($location->coveredArea()->conditions) && isset($location->coveredArea()->conditions[0])){
-                    if($location->coveredArea()->conditions[0]['delivery_service'] == 'postmates' &&
-                    get_class($location->coveredArea()) == 'Igniter\Local\Classes\CoveredArea'){
-                        if ($areaId = (int)$location->getSession('area')){
-                            $area = $location->getModel()->findDeliveryArea($areaId);
-                        }
-                        if (is_null($area)) {
-                            $area = $location->getModel()->searchOrDefaultDeliveryArea(
-                                $location->userPosition()->getCoordinates()
-                            );
-                        }
-                        $ca = new PostmatesCoveredArea($area, $location);
-                        $location->setCoveredArea($ca);
-                    }
-                }
-                $location->locationSlugResolver(function () {return controller()->param('location');});
-            });
+        Event::listen('main.page.init', function($controller){
+                $this->updatePostmatesDeliveryCost(app('location'));
         });
 
         Event::listen('location.area.updated', function($location,$coveredArea){
