@@ -278,8 +278,8 @@ class Extension extends BaseExtension
         
         // if $location->coveredArea is of the base type but has delivery_service == postmates, replace it with the new PostmatesCoveredAreaClass
         if(is_array($location->coveredArea()->conditions) && isset($location->coveredArea()->conditions[0])){
-            if($location->coveredArea()->conditions[0]['delivery_service'] == 'postmates' &&
-            get_class($location->coveredArea()) == 'Igniter\Local\Classes\CoveredArea'){
+            if($location->coveredArea()->conditions[0]['delivery_service'] == 'postmates' 
+            && is_object($location->coveredArea()) &&  get_class($location->coveredArea()) == 'Igniter\Local\Classes\CoveredArea'){
                 
                 if ($areaId = (int)$location->getSession('area')){
                     $area = $location->getModel()->findDeliveryArea($areaId);

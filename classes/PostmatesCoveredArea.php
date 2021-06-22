@@ -7,7 +7,7 @@ use Admin\Models\Location_areas_model;
 use Igniter\Flame\Location\Contracts\AreaInterface;
 
 use CupNoodles\Postmates\Models\PostmatesSettings;
-
+use ApplicationException;
 use Igniter\Flame\Database\Model;
 /**
  * @method getLocationId()
@@ -35,7 +35,7 @@ class PostmatesCoveredArea extends CoveredArea{
         if($user_position && ( !isset($this->oldPosition) || $user_position != $this->oldPosition  )){
             $this->oldPosition = $user_position;
             $delivery_cost_estimate = $this->curl_postmates_delivery_quote($user_position, $cartTotal);
-            
+
             if($delivery_cost_estimate >= 0 ){
                 // amount condition value is added as a surcharge
                 $delivery_cost_estimate += $this->getConditionValue('amount', $cartTotal);
@@ -43,13 +43,15 @@ class PostmatesCoveredArea extends CoveredArea{
 
                 return $delivery_cost_estimate;
             }
+            else{
+                return 0;
+            }
         }
-        elseif($user_position){
+        elseif($user_position && session('postmates_delivery_quote') > 0){
             return session('postmates_delivery_quote');
-
         }
         
-        return -1;
+        return 0;
         
     }
 
@@ -59,10 +61,11 @@ class PostmatesCoveredArea extends CoveredArea{
         $user_position->format();
         // Postmates specifically requests comma-separated address formatting, so remove any potential commas in existing address fields
         $street_address = str_replace(',', ' ', $user_position->getStreetNumber() . ' ' . $user_position->getStreetName());
+        $address_2 = isset($user_position->data['subpremise']) ? $user_position->data['subpremise'] : '';
         $city = str_replace(',', ' ', $user_position->getSubLocality());
         $state = str_replace(',', ' ', $user_position->getLocality());
         $postcode = str_replace(',', ' ', $user_position->getPostalCode());
-        $user_address = $street_address . ', ' . $city . ', ' . $state . ', ' . $postcode;
+        $user_address = $street_address . ' ' . $address_2 . ' , ' . $city . ', ' . $state . ', ' . $postcode;
 
         // get location address string
         $location_address = $this->location->getModel()->getAddress();
@@ -105,7 +108,7 @@ class PostmatesCoveredArea extends CoveredArea{
             return $result['fee'] / 100;
         }
         else{
-            // 
+            flash()->alert('Postmates Delivery Quote failed. ' . $result['message']);
             return -1;
         }
     }
